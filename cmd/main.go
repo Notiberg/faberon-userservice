@@ -123,7 +123,7 @@ func main() {
 	protected := r.PathPrefix("").Subrouter()
 	protected.Use(middleware.UserIDAuth)
 
-	protected.HandleFunc("/users/me", getCurrentUserHandler.Handle).Methods(http.MethodGet, http.MethodPut, http.MethodDelete, http.MethodOptions)
+	protected.HandleFunc("/users/me", getCurrentUserHandler.Handle).Methods(http.MethodGet, http.MethodOptions)
 	protected.HandleFunc("/users/me", updateCurrentUserHandler.Handle).Methods(http.MethodPut, http.MethodOptions)
 	protected.HandleFunc("/users/me", deleteCurrentUserHandler.Handle).Methods(http.MethodDelete, http.MethodOptions)
 
