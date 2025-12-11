@@ -1,0 +1,588 @@
+openapi: 3.1.0
+info:
+  title: "UserService API"
+  description: |
+    API для управления пользователями и их автомобилями в приложении для автомойки.
+
+    ## Аутентификация
+
+    ⚠️ **ВАЖНО**: Для работы защищённых endpoints необходимо передавать **ОБА заголовка**:
+    - **X-User-ID**: Telegram user ID пользователя (integer)
+    - **X-User-Role**: Роль пользователя (client | manager | superuser)
+
+    ### Пример использования:
+    ```bash
+    curl -X GET https://api.carwash.app/v1/users/me \
+      -H "X-User-ID: 123456789" \
+      -H "X-User-Role: client"
+    ```
+
+    ### Роли пользователей:
+    - **client** - клиент автомойки (доступ только к своим данным)
+    - **manager** - менеджер автомойки (доступ к своим данным + управление компанией)
+    - **superuser** - администратор системы (полный доступ ко всем данным)
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8080/
+    description: Production Server
+
+paths:
+  /internal/users/superusers:
+    get:
+      tags: [Internal]
+      summary: "Получение списка всех суперпользователей (межсервисное взаимодействие)"
+      description: "Endpoint для получения списка Telegram user ID всех пользователей с ролью superuser."
+      responses:
+        '200':
+          description: "Успешный ответ со списком ID суперпользователей."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuperUsersResponse'
+        '500':
+          description: "Внутренняя ошибка сервера."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /internal/users/{tg_user_id}:
+    get:
+      tags: [Internal]
+      summary: "Получение пользователя по ID (межсервисное взаимодействие)"
+      description: "Endpoint для получения данных пользователя другими сервисами по его Telegram user ID."
+      parameters:
+        - name: tg_user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: "Telegram user ID пользователя."
+          example: 123456789
+      responses:
+        '200':
+          description: "Успешный ответ с данными пользователя и его автомобилями."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserWithCars'
+        '400':
+          description: "Некорректный формат user ID."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: "Пользователь не найден."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /internal/users/{tg_user_id}/cars/selected:
+    get:
+      tags: [Internal]
+      summary: "Получение выбранного автомобиля пользователя (межсервисное взаимодействие)"
+      description: "Endpoint для получения текущего выбранного автомобиля пользователя другими сервисами."
+      parameters:
+        - name: tg_user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: "Telegram user ID пользователя."
+          example: 123456789
+      responses:
+        '200':
+          description: "Успешный ответ с данными выбранного автомобиля."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Car'
+        '400':
+          description: "Некорректный формат user ID."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: "У пользователя нет выбранного автомобиля."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users:
+    post:
+      tags: [Users]
+      summary: "Создание нового пользователя"
+      description: "Создаёт нового пользователя. Номер телефона является опциональным полем."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewUserInput'
+      responses:
+        '201':
+          description: "Пользователь успешно создан."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: "Некорректные данные в запросе (например, неверный формат телефона)."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: "Пользователь с таким `tg_user_id` уже существует."
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: "Получение данных текущего пользователя"
+      security:
+        - UserIdAuth: []
+        - UserRoleAuth: []
+      responses:
+        '200':
+          description: "Успешный ответ с данными пользователя."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserWithCars'
+        '401':
+          description: "Пользователь не аутентифицирован."
+        '404':
+          description: "Пользователь не найден."
+
+    put:
+      tags: [Users]
+      summary: "Частичное обновление профиля текущего пользователя"
+      description: "Обновляет только переданные поля. Непереданные поля остаются без изменений."
+      security:
+        - UserIdAuth: []
+        - UserRoleAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserInput'
+      responses:
+        '200':
+          description: "Профиль успешно обновлен."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: "Некорректные данные в запросе."
+        '401':
+          description: "Пользователь не аутентифицирован."
+        '404':
+          description: "Пользователь не найден."
+
+    delete:
+      tags: [Users]
+      summary: "Удаление профиля текущего пользователя"
+      description: "Рекомендуется использовать 'soft delete' на бэкенде."
+      security:
+        - UserIdAuth: []
+        - UserRoleAuth: []
+      responses:
+        '204':
+          description: "Пользователь успешно удален."
+        '401':
+          description: "Пользователь не аутентифицирован."
+        '404':
+          description: "Пользователь не найден."
+
+  /metrics:
+    get:
+      tags: [Monitoring]
+      summary: "Prometheus метрики"
+      description: "Endpoint для сбора метрик Prometheus. Возвращает метрики в формате OpenMetrics."
+      responses:
+        '200':
+          description: "Метрики успешно получены."
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP http_requests_total Total number of HTTP requests
+                  # TYPE http_requests_total counter
+                  http_requests_total{method="GET",endpoint="/users/me",status="200"} 42
+
+                  # HELP http_request_duration_seconds HTTP request duration in seconds
+                  # TYPE http_request_duration_seconds histogram
+                  http_request_duration_seconds_bucket{method="GET",endpoint="/users/me",status="200",le="0.005"} 10
+
+                  # HELP http_requests_in_flight Current number of HTTP requests being processed
+                  # TYPE http_requests_in_flight gauge
+                  http_requests_in_flight 3
+
+  /users/me/cars:
+    post:
+      tags: [Cars]
+      summary: "Добавление автомобиля текущему пользователю"
+      security:
+        - UserIdAuth: []
+        - UserRoleAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewCarInput'
+      responses:
+        '201':
+          description: "Автомобиль успешно добавлен."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Car'
+        '400':
+          description: "Некорректные данные автомобиля."
+        '401':
+          description: "Пользователь не аутентифицирован."
+        '404':
+          description: "Пользователь не найден."
+
+  /users/me/cars/{car_id}:
+    patch:
+      tags: [Cars]
+      summary: "Частичное обновление данных автомобиля"
+      security:
+        - UserIdAuth: []
+        - UserRoleAuth: []
+      parameters:
+        - name: car_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: "Уникальный идентификатор автомобиля."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCarInput'
+      responses:
+        '200':
+          description: "Автомобиль успешно обновлен."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Car'
+        '400':
+          description: "Некорректные данные в запросе."
+        '401':
+          description: "Пользователь не аутентифицирован."
+        '403':
+          description: "Попытка обновить чужой автомобиль."
+        '404':
+          description: "Автомобиль не найден."
+
+    delete:
+      tags: [Cars]
+      summary: "Удаление автомобиля пользователя"
+      security:
+        - UserIdAuth: []
+        - UserRoleAuth: []
+      parameters:
+        - name: car_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: "ID удаляемого автомобиля."
+      responses:
+        '204':
+          description: "Автомобиль успешно удален."
+        '403':
+          description: "Доступ запрещен (попытка удалить чужой автомобиль)."
+
+  /users/me/cars/{car_id}/select:
+    put:
+      tags: [Cars]
+      summary: "Установка автомобиля как выбранного"
+      description: "Устанавливает указанный автомобиль как текущий выбранный. Предыдущий выбранный автомобиль автоматически снимается с выбора."
+      security:
+        - UserIdAuth: []
+        - UserRoleAuth: []
+      parameters:
+        - name: car_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: "ID автомобиля для установки как выбранного."
+      responses:
+        '200':
+          description: "Автомобиль успешно установлен как выбранный."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Car'
+        '400':
+          description: "Некорректный ID автомобиля."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: "Пользователь не аутентифицирован."
+        '403':
+          description: "Доступ запрещен (попытка выбрать чужой автомобиль)."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: "Автомобиль не найден."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    # --- МОДЕЛИ ДАННЫХ ---
+    User:
+      type: object
+      properties:
+        tg_user_id:
+          type: integer
+          format: int64
+          description: "Уникальный числовой ID пользователя в Telegram."
+          example: 123456789
+        name:
+          type: string
+          description: "Имя пользователя."
+          example: "Иван"
+        phone_number:
+          type: string
+          nullable: true
+          description: "Номер телефона в формате E.164."
+          example: "+79991234567"
+        tg_link:
+          type: string
+          nullable: true
+          description: "Ссылка на профиль в Telegram (username)."
+          example: "@m0sHe4kA"
+        role:
+          type: string
+          enum: [client, manager, superuser]
+          description: "Роль пользователя в системе."
+          example: "client"
+        created_at:
+          type: string
+          format: date-time
+          description: "Время создания пользователя."
+          readOnly: true
+
+    Car:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: "Уникальный ID автомобиля."
+          readOnly: true
+        user_id:
+          type: integer
+          format: int64
+          description: "ID пользователя-владельца автомобиля."
+          readOnly: true
+        brand:
+          type: string
+          description: "Марка автомобиля."
+          example: "BMW"
+        model:
+          type: string
+          description: "Модель автомобиля."
+          example: "X5"
+        license_plate:
+          type: string
+          description: "Государственный регистрационный номер."
+          example: "А123БВ799"
+        color:
+          type: string
+          description: "Цвет автомобиля."
+          example: "Черный"
+        size:
+          type: string
+          description: "Класс автомобиля согласно европейской системе классов (A — мини-автомобили, B — малые, C — средние (гольф-класс), D — большие средние, E — бизнес-класс, F — люксовые, J — внедорожники, M — минивэны, S — спорткары). Используется для расчета цены."
+          example: "E"
+        is_selected:
+          type: boolean
+          description: "Флаг, указывающий, является ли данный автомобиль выбранным (текущим) для пользователя."
+          example: true
+
+    UserWithCars:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/User'
+      properties:
+        cars:
+          type: array
+          items:
+            $ref: '#/components/schemas/Car'
+
+    SuperUsersResponse:
+      type: object
+      properties:
+        super_user_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: "Список Telegram user ID всех суперпользователей."
+          example: [123456789, 987654321]
+
+    # --- МОДЕЛИ ДЛЯ ТЕЛА ЗАПРОСА (INPUT) ---
+    NewUserInput:
+      type: object
+      required:
+        - tg_user_id
+        - name
+        - role
+      properties:
+        tg_user_id:
+          type: integer
+          format: int64
+          example: 123456789
+        name:
+          type: string
+          example: "Иван"
+        phone_number:
+          type: string
+          nullable: true
+          description: "Номер телефона в формате E.164. Опционально."
+          example: "+79991234567"
+        tg_link:
+          type: string
+          nullable: true
+          example: "@m0sHe4kA"
+        role:
+          type: string
+          enum: [client, manager, superuser]
+          description: "Роль пользователя. По умолчанию: client."
+          example: "client"
+
+    UpdateUserInput:
+      type: object
+      description: "Модель для частичного обновления пользователя. Все поля опциональны. Обновляются только переданные поля."
+      properties:
+        name:
+          type: string
+          nullable: true
+          description: "Имя пользователя. Опционально."
+          example: "Иван Петров"
+        phone_number:
+          type: string
+          nullable: true
+          description: "Номер телефона в формате E.164. Опционально."
+          example: "+79001112233"
+        tg_link:
+          type: string
+          nullable: true
+          description: "Ссылка на профиль в Telegram. Опционально."
+          example: "@new_m0sHe4kA"
+
+    NewCarInput:
+      type: object
+      required:
+        - brand
+        - model
+        - license_plate
+      properties:
+        brand:
+          type: string
+          example: "Audi"
+        model:
+          type: string
+          example: "Q7"
+        license_plate:
+          type: string
+          example: "В321АУ777"
+        color:
+          type: string
+          example: "Синий"
+        size:
+          type: string
+          description: "Класс автомобиля согласно европейской системе классов (A — мини-автомобили, B — малые, C — средние (гольф-класс), D — большие средние, E — бизнес-класс, F — люксовые, J — внедорожники, M — минивэны, S — спорткары). Опционально, может быть получен из VehicleCatalogService по бренду/модели."
+          example: "J"
+
+    UpdateCarInput:
+      type: object
+      description: "Модель для частичного обновления автомобиля. Все поля опциональны."
+      properties:
+        brand:
+          type: string
+          example: "Audi"
+        model:
+          type: string
+          example: "Q8"
+        license_plate:
+          type: string
+          example: "В321АУ777"
+        color:
+          type: string
+          example: "Белый"
+        size:
+          type: string
+          description: "Класс автомобиля согласно европейской системе классов (A, B, C, D, E, F, J, M, S)."
+          example: "C"
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: "Код ошибки."
+          example: 400
+        message:
+          type: string
+          description: "Описание ошибки."
+          example: "Validation failed."
+
+  securitySchemes:
+    UserIdAuth:
+      type: apiKey
+      in: header
+      name: X-User-ID
+      description: |
+        Упрощенная аутентификация (MVP).
+
+        ⚠️ ВАЖНО: Для работы защищённых endpoints необходимо передавать ОБА заголовка:
+        - **X-User-ID**: Telegram user ID пользователя (integer)
+        - **X-User-Role**: Роль пользователя (client | manager | superuser)
+
+        Пример:
+        ```
+        X-User-ID: 123456789
+        X-User-Role: client
+        ```
+
+    UserRoleAuth:
+      type: apiKey
+      in: header
+      name: X-User-Role
+      description: |
+        Роль пользователя для проверки прав доступа.
+
+        Возможные значения:
+        - **client** - клиент автомойки (доступ только к своим данным)
+        - **manager** - менеджер автомойки (доступ к своим данным + управление компанией)
+        - **superuser** - администратор (полный доступ ко всем данным)

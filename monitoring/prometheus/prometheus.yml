@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'smc-userservice'
+    static_configs:
+      - targets: ['userservice:8080']
+        labels:
+          service: 'userservice'
+          environment: 'docker'
+      - targets: ['host.docker.internal:8080']
+        labels:
+          service: 'userservice'
+          environment: 'local'

@@ -1,0 +1,24 @@
+# Логирование
+[logs]
+level = "info"
+file = "/app/logs/app.log"
+
+# HTTP сервер
+[server]
+http_port = 8080
+read_timeout = 15
+write_timeout = 15
+idle_timeout = 60
+shutdown_timeout = 10
+
+# База данных PostgreSQL
+[database]
+host = "postgres"
+port = 5432
+user = "postgres"
+password = "postgres"
+dbname = "smc_userservice"
+sslmode = "disable"
+max_open_conns = 25
+max_idle_conns = 5
+conn_max_lifetime = 300
