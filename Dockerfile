@@ -36,14 +36,5 @@ RUN mkdir -p /app/logs
 # Expose port
 EXPOSE 8080
 
-# Create entrypoint script for migrations
-RUN echo '#!/bin/sh\n\
-for f in ./migrations/*.up.sql; do\n\
-  echo "Running migration: $f"\n\
-  psql "postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$POSTGRES_DB?sslmode=disable" -f "$f" || true\n\
-done\n\
-exec ./main\n\
-' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
-
-# Run the application with migrations
-CMD ["/app/entrypoint.sh"]
+# Run the application
+CMD ["./main"]
