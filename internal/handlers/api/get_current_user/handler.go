@@ -39,7 +39,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 			// Auto-create user if not found
 			createInput := models.CreateUserInputDTO{
 				TGUserID: userID,
-				Name:     fmt.Sprintf("User_%d", userID),
+				Name:     "", // Empty name - user should set it themselves
 				Role:     "customer",
 			}
 			_, err := h.service.CreateUser(r.Context(), createInput)
